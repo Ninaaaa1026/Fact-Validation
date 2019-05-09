@@ -47,5 +47,4 @@ class InvertedIndex:
             space_usage += len(freq_list) * 8
         return space_usage
 
-
 invindex = InvertedIndex(vocab, doc_term_freqs)

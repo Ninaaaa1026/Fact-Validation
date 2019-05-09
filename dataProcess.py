@@ -43,5 +43,3 @@ def dataProcessing():
                 else:
                     norm_docs[title].append({'senNum':senNum,'frequency':cnt})
     return norm_docs,doc_vocab
-
-print(dataProcessing()[0])
