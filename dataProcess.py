@@ -25,14 +25,19 @@ def dataProcessing():
                 title=oneLine[0]
                 senNum=oneLine[1]
                 # stemming and lower
-                raw_sentence=[stemmer.stem(word.lower()) for word in oneLine[2:] if word.isalpha()]
                 cnt = Counter()
-                doc_term_freqs=[]
-                for word in raw_sentence:
-                    cnt[word] += 1
-                doc_term_freqs.append(cnt)
+                # raw_sentence=[ ]
+                for word in oneLine[2:]:
+                    if word.isalpha():
+                        w=stemmer.stem(word.lower())
+                        cnt[w] += 1
+                # if title not in norm_docs.keys():
+                #     norm_docs[title]=[{'senNum':senNum,'sentence':raw_sentence,'frequency':cnt}]
+                # else:
+                #     norm_docs[title].append({'senNum':senNum,'sentence':raw_sentence,'frequency':cnt})
                 if title not in norm_docs.keys():
-                    norm_docs[title]=[{'senNum':senNum,'sentence':raw_sentence,'frequency':doc_term_freqs}]
+                    norm_docs[title]=[{'senNum':senNum,'frequency':cnt}]
                 else:
-                    norm_docs[title].append({'senNum':senNum,'sentence':raw_sentence,'frequency':doc_term_freqs})
+                    norm_docs[title].append({'senNum':senNum,'frequency':cnt})
     return norm_docs
+print(dataProcessing())
