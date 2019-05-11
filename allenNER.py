@@ -127,8 +127,11 @@ def docments_retrieval(entities, norm_docs,k=5):
     for doctitle, sentences in norm_docs.items():
         for sentence in sentences:
             for entity in entities:
+                if sentence['sentence'].count(entity)>0:
+                    print(sentence['sentence'].count(entity))
+                    print(sentence['sentence'])
                 doc_score.update({doctitle:sentence['sentence'].count(entity)})
-    return sorted(doc_score.items(), key=lambda kv: kv[1])[:5]
+    return sorted(doc_score.items(), key=lambda kv: kv[1])[:20]
 
 def sentRetrive(lemmatized_query,topDocTitile):
     unique_token = 0
@@ -146,9 +149,11 @@ def entityRetrieval(query):
     predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     results = predicts.predict_json({"sentence": query})
     entity = []
+    wordList=[]
     flag = False
     for index, tag in enumerate(results['tags']):
         if len(str(tag)) > 1:
+            wordList.append(process().lemmatize(results['words'][index].lower()))
             if str(tag).startswith('B-'):
                 phrase = process().lemmatize(results['words'][index].lower())
                 flag = True
@@ -159,25 +164,28 @@ def entityRetrieval(query):
                     entity.append(phrase)
             else:
                 entity.append(process().lemmatize(results['words'][index].lower()))
-    return entity
+    return entity,wordList
 
 if __name__ == '__main__':
     query = "Henderson contributed a track with Big Boss"
 
     # entity retrieval
-    entity=entityRetrieval(query)
+    entity,wordList=entityRetrieval(query)
+    print(entity)
     time1=time.time()
+
     # data propressing
     proprocess=process()
     norm_docs=proprocess.dataProcessing()
 
     # docments retrieval
     topDocTitile = docments_retrieval(entity, norm_docs)
+    print(topDocTitile)
 
     # sentences retrieval
-    queryToken = nltk.word_tokenize(query)
-    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
-    evidence = sentRetrive(lemmatized_query,topDocTitile)
+    # queryToken = nltk.word_tokenize(query)
+    # lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
+    evidence = sentRetrive(wordList,topDocTitile)
     time2 = time.time()-time1
     print(evidence)
     print(time2)
