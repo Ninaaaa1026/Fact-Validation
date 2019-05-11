@@ -84,7 +84,6 @@ def sentence_tfidf(query, index, k=5):
             if sentid not in scores.keys():
                 scores[sentid] = 0
             i = sentids.index(sentid)
-            print(scores[sentid])
             scores[sentid] += log(1 + index.freqs(term)[i]) * log(N / index.f_t(term))
     for docid, score in scores.items():
         scores[sentid] = score / sqrt(index.sent_len[sentid])
@@ -142,7 +141,7 @@ class DocInvertedIndex:
         return space_usage
 
 class SentInvertedIndex:
-    def __init__(self, doc_term_freqs,vocab):
+    def __init__(self, doc_titles, doc_term_freqs,vocab):
         self.vocab = vocab
         self.sent_len = {}
         self.sent_term_freqs = [[] for i in range(len(vocab))]
@@ -150,7 +149,8 @@ class SentInvertedIndex:
         self.sent_freqs = [0] * len(vocab)
         self.total_num_sents = 0
         self.max_sent_len = 0
-        for docTitle, content in doc_term_freqs.items():
+        for title in doc_titles:
+            content = doc_term_freqs[title]
             docid = content["DOCID"]
             sentences = content["senFrequency"]
             for sentence in sentences:
@@ -160,11 +160,11 @@ class SentInvertedIndex:
                 self.sent_len[(docid, sentid)] = sent_len
                 self.total_num_sents += 1
                 for term, freq in sentFrequency.items():
-                    term_id = vocab[term]
-                    self.sent_ids[term_id].append((docid, sentid))
-                    self.sent_term_freqs[term_id].append(sentFrequency)
-                    self.sent_freqs[term_id] += 1
-
+                    if term in vocab:
+                        term_id = vocab[term]
+                        self.sent_ids[term_id].append((docid, sentid))
+                        self.sent_term_freqs[term_id].append(freq)
+                        self.sent_freqs[term_id] += 1
 
     def num_terms(self):
         return len(self.sent_ids)
@@ -193,28 +193,30 @@ class SentInvertedIndex:
             space_usage += len(freq_list)
         return space_usage
 
+def sentRetrive(query):
+    #docments retrieval
+    doc_index = DocInvertedIndex(norm_docs,doc_vocab)
+    queryToken=nltk.word_tokenize(query)
+    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
+    topDocID = query_tfidf(lemmatized_query, doc_index)
+    topDocTitile=[doc_id_pair[item[0]] for item in topDocID]
+
+    unique_token = 0
+    query_vocab = {}
+    for word in lemmatized_query:
+        if word not in query_vocab:
+            query_vocab[word]=unique_token
+            unique_token += 1
+    print(query_vocab)
+    #sentences retrieval
+    sent_index = SentInvertedIndex(topDocTitile, norm_docs, query_vocab)
+    return sentence_tfidf(lemmatized_query, sent_index)
 
 if __name__ == '__main__':
-    # query = sys.argv[0]
     query = "Henderson contributed a track with Big Boss"
 
     # data propressing
     proprocess=process()
     norm_docs,doc_vocab,doc_id_pair=proprocess.dataProcessing()
-
-    '''
-    #docments retrieval
-    compressed_index = DocInvertedIndex(norm_docs,doc_vocab)
-    queryToken=nltk.word_tokenize(query)
-    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
-    topDocID = query_tfidf(lemmatized_query, compressed_index)
-    topDocTitile=[doc_id_pair[item[0]] for item in topDocID]
-    print(topDocTitile)
-    '''
-
-    #sentences retrieval
-    index = SentInvertedIndex(norm_docs,doc_vocab)
-    queryToken=nltk.word_tokenize(query)
-    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
-    topSent = sentence_tfidf(lemmatized_query, index)
-    print(topSent)
+    evidence = sentRetrive(query)
+    print(evidence)
