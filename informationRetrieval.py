@@ -25,14 +25,14 @@ class process():
 
     def dataProcessing(self):
         # Save to the current directory
-        files = os.listdir('./wiki-pages-text/')
+        files = os.listdir('./wiki/')
         norm_docs = {}
         doc_vocab = {}
         unique_token = 0
         count=0
         doc_id_pair={}
         for f in files:
-            with open('./wiki-pages-text/'+ f, 'r', encoding='utf-8') as f:
+            with open('./wiki/'+ f, 'r', encoding='utf-8') as f:
                 for raw_doc in f:
                     oneLine=raw_doc.split(" ")
                     title=oneLine[0]
@@ -57,7 +57,7 @@ class process():
         return norm_docs,doc_vocab,doc_id_pair
 
 # given a query and an index returns a list of the k highest scoring documents as tuples containing <docid,score>
-def query_tfidf(query, index, k=10):
+def query_tfidf(query, index, k=5):
     # scores stores doc ids and their scores
     scores = Counter()
 
@@ -73,43 +73,24 @@ def query_tfidf(query, index, k=10):
         scores[docid] = score / sqrt(index.doc_len[docid])
     return scores.most_common(k)
 
-def vbyte_encode(num):
-    # out_bytes stores a list of output bytes encoding the number
-    out_bytes = []
-    while num >= 128:
-        out_bytes.append(num % 128)
-        num = int(num / 128)
-    out_bytes.append(num + 128)
-    return out_bytes
+def sentence_tfidf(query, index, k=5):
+    # scores stores doc ids and their scores
+    scores = Counter()
 
-def vbyte_decode(input_bytes, idx):
-    # x stores the decoded number
-    x = 0
-    # consumed stores the number of bytes consumed to decode the number
-    consumed = 0
-    y = input_bytes[idx]
-    while y < 128:
-        x += y * 128 ** consumed
-        consumed += 1
-        y = input_bytes[idx + consumed]
-    x += (y - 128) * 128 ** consumed
-    consumed += 1
-    return x, consumed
+    N = index.num_sents()
+    for term in query:
+        sentids = index.sentids(term)
+        for sentid in sentids:
+            if sentid not in scores.keys():
+                scores[sentid] = 0
+            i = sentids.index(sentid)
+            print(scores[sentid])
+            scores[sentid] += log(1 + index.freqs(term)[i]) * log(N / index.f_t(term))
+    for docid, score in scores.items():
+        scores[sentid] = score / sqrt(index.sent_len[sentid])
+    return scores.most_common(k)
 
-def decompress_list(input_bytes, gapped_encoded):
-    res = []
-    prev = 0
-    idx = 0
-    while idx < len(input_bytes):
-        dec_num, consumed_bytes = vbyte_decode(input_bytes, idx)
-        idx += consumed_bytes
-        num = dec_num + prev
-        res.append(num)
-        if gapped_encoded:
-            prev = num
-    return res
-
-class DocCompressedInvertedIndex:
+class DocInvertedIndex:
     def __init__(self, doc_term_freqs,vocab):
         self.vocab = vocab
         self.doc_len = [0] * len(doc_term_freqs)
@@ -133,16 +114,6 @@ class DocCompressedInvertedIndex:
                 self.doc_term_freqs[term_id].append(freq)
                 self.doc_freqs[term_id] += 1
 
-        for term_id in vocab.values():
-            doc_ids = vbyte_encode(self.doc_ids[term_id][0])
-            doc_term_freqs = vbyte_encode(self.doc_term_freqs[term_id][0])
-            for i in range(1, self.doc_freqs[term_id]):
-                num_doc_ids = self.doc_ids[term_id][i] - self.doc_ids[term_id][i - 1]
-                doc_ids.extend(vbyte_encode(num_doc_ids))
-                doc_term_freqs.extend(vbyte_encode(self.doc_term_freqs[term_id][i]))
-            self.doc_ids[term_id] = doc_ids
-            self.doc_term_freqs[term_id] = doc_term_freqs
-
     def num_terms(self):
         return len(self.doc_ids)
 
@@ -151,13 +122,11 @@ class DocCompressedInvertedIndex:
 
     def docids(self, term):
         term_id = self.vocab[term]
-        # We decompress
-        return decompress_list(self.doc_ids[term_id], True)
+        return self.doc_ids[term_id]
 
     def freqs(self, term):
         term_id = self.vocab[term]
-        # We decompress
-        return decompress_list(self.doc_term_freqs[term_id], False)
+        return self.doc_term_freqs[term_id]
 
     def f_t(self, term):
         term_id = self.vocab[term]
@@ -172,13 +141,58 @@ class DocCompressedInvertedIndex:
             space_usage += len(freq_list)
         return space_usage
 
-# def get_key(dict, value):
-#     titles=[]
-#     for rank in value:
-#         for k, v in dict.items():
-#             if v['DOCID'] == rank[0]:
-#                 titles.append(k)
-#     return titles
+class SentInvertedIndex:
+    def __init__(self, doc_term_freqs,vocab):
+        self.vocab = vocab
+        self.sent_len = {}
+        self.sent_term_freqs = [[] for i in range(len(vocab))]
+        self.sent_ids = [[] for i in range(len(vocab))]
+        self.sent_freqs = [0] * len(vocab)
+        self.total_num_sents = 0
+        self.max_sent_len = 0
+        for docTitle, content in doc_term_freqs.items():
+            docid = content["DOCID"]
+            sentences = content["senFrequency"]
+            for sentence in sentences:
+                sentid = sentence['senNum']
+                sentFrequency = sentence['frequency']
+                sent_len = sum(sentFrequency.values())
+                self.sent_len[(docid, sentid)] = sent_len
+                self.total_num_sents += 1
+                for term, freq in sentFrequency.items():
+                    term_id = vocab[term]
+                    self.sent_ids[term_id].append((docid, sentid))
+                    self.sent_term_freqs[term_id].append(sentFrequency)
+                    self.sent_freqs[term_id] += 1
+
+
+    def num_terms(self):
+        return len(self.sent_ids)
+
+    def num_sents(self):
+        return self.total_num_sents
+
+    def sentids(self, term):
+        term_id = self.vocab[term]
+        return self.sent_ids[term_id]
+
+    def freqs(self, term):
+        term_id = self.vocab[term]
+        return self.sent_term_freqs[term_id]
+
+    def f_t(self, term):
+        term_id = self.vocab[term]
+        return self.sent_freqs[term_id]
+
+    def space_in_bytes(self):
+        # this function assumes the integers are now bytes
+        space_usage = 0
+        for doc_list in self.sent_ids:
+            space_usage += len(sent_list)
+        for freq_list in self.sent_term_freqs:
+            space_usage += len(freq_list)
+        return space_usage
+
 
 if __name__ == '__main__':
     # query = sys.argv[0]
@@ -188,10 +202,19 @@ if __name__ == '__main__':
     proprocess=process()
     norm_docs,doc_vocab,doc_id_pair=proprocess.dataProcessing()
 
+    '''
     #docments retrieval
-    compressed_index = DocCompressedInvertedIndex(norm_docs,doc_vocab)
+    compressed_index = DocInvertedIndex(norm_docs,doc_vocab)
     queryToken=nltk.word_tokenize(query)
     lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
     topDocID = query_tfidf(lemmatized_query, compressed_index)
     topDocTitile=[doc_id_pair[item[0]] for item in topDocID]
     print(topDocTitile)
+    '''
+
+    #sentences retrieval
+    index = SentInvertedIndex(norm_docs,doc_vocab)
+    queryToken=nltk.word_tokenize(query)
+    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
+    topSent = sentence_tfidf(lemmatized_query, index)
+    print(topSent)
