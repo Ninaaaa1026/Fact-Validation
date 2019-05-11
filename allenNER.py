@@ -3,6 +3,7 @@ import nltk
 import os,sys
 from collections import Counter,defaultdict
 from math import log, sqrt
+import time
 
 class process():
     def __init__(self):
@@ -26,7 +27,10 @@ class process():
                     oneLine=raw_doc.split(" ")
                     title=oneLine[0]
                     senNum=oneLine[1]
-                    norm_sen=[self.lemmatize(word.lower()) for word in oneLine[2:] if word.isalpha() or word.isnumeric()]
+                    norm_sen = ""
+                    for word in oneLine[2:]:
+                        if word.isalpha() or word.isnumeric():
+                            norm_sen+=self.lemmatize(word.lower())+" "
                     if title not in norm_docs.keys():
                         norm_docs[title]=[{'senNum':senNum,'sentence':norm_sen}]
                     else:
@@ -61,18 +65,17 @@ class SentInvertedIndex:
         self.max_sent_len = 0
         for title,score in doc_titles:
             content = doc_term_freqs[title]
-            docid = content["DOCID"]
-            sentences = content["senFrequency"]
-            for sentence in sentences:
+            for sentence in content:
+                raw_sentence = sentence["sentence"].split(" ")
                 sentid = sentence['senNum']
-                sentFrequency = sentence['frequency']
+                sentFrequency = Counter(raw_sentence)
                 sent_len = sum(sentFrequency.values())
-                self.sent_len[(docid, sentid)] = sent_len
+                self.sent_len[(title, sentid)] = sent_len
                 self.total_num_sents += 1
                 for term, freq in sentFrequency.items():
                     if term in vocab:
                         term_id = vocab[term]
-                        self.sent_ids[term_id].append((docid, sentid))
+                        self.sent_ids[term_id].append((title, sentid))
                         self.sent_term_freqs[term_id].append(freq)
                         self.sent_freqs[term_id] += 1
 
@@ -163,7 +166,7 @@ if __name__ == '__main__':
 
     # entity retrieval
     entity=entityRetrieval(query)
-
+    time1=time.time()
     # data propressing
     proprocess=process()
     norm_docs=proprocess.dataProcessing()
@@ -175,3 +178,6 @@ if __name__ == '__main__':
     queryToken = nltk.word_tokenize(query)
     lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
     evidence = sentRetrive(lemmatized_query,topDocTitile)
+    time2 = time.time()-time1
+    print(evidence)
+    print(time2)
