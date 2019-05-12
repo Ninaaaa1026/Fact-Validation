@@ -20,7 +20,9 @@ class process():
     def dataProcessing(self):
         # Save to the current directory
         files = os.listdir('./wiki/')
+        vocab = Counter()
         norm_docs = {}
+        num_sentence = 0
         for f in files:
             with open('./wiki/'+ f, 'r', encoding='utf-8') as f:
                 for raw_doc in f:
@@ -28,17 +30,22 @@ class process():
                     title=oneLine[0]
                     senNum=oneLine[1]
                     norm_sen = ""
+                    num_sentence += 1
+
                     for word in oneLine[2:]:
                         if word.isalpha() or word.isnumeric():
-                            norm_sen+=self.lemmatize(word.lower())+" "
+                            lem_word = self.lemmatize(word.lower())
+                            norm_sen+= lem_word +" "
+                            vocab[lem_word] += 1
+
                     if title not in norm_docs.keys():
                         norm_docs[title]=[{'senNum':senNum,'sentence':norm_sen}]
                     else:
                         norm_docs[title].append({'senNum':senNum,'sentence':norm_sen})
-        return norm_docs
+        return norm_docs, vocab, num_sentence
 
 # given a query and an index returns a list of the k highest scoring documents as tuples containing <docid,score>
-def query_tfidf(query, index, k=5):
+def query_tfidf(vocab, query, index, k=5):
     # scores stores doc ids and their scores
     scores = Counter()
 
@@ -106,18 +113,17 @@ class SentInvertedIndex:
             space_usage += len(freq_list)
         return space_usage
 
-def sentence_tfidf(query, index, k=5):
+def sentence_tfidf(num_sentence, vocab, query, index, k=5):
     # scores stores doc ids and their scores
     scores = Counter()
 
-    N = index.num_sents()
     for term in query:
         sentids = index.sentids(term)
         for sentid in sentids:
             if sentid not in scores.keys():
                 scores[sentid] = 0
             i = sentids.index(sentid)
-            scores[sentid] += log(1 + index.freqs(term)[i]) * log(N / index.f_t(term))
+            scores[sentid] += log(1 + index.freqs(term)[i]) * log(num_sentence / vocab[term])
     for docid, score in scores.items():
         scores[sentid] = score / sqrt(index.sent_len[sentid])
     return scores.most_common(k)
@@ -127,13 +133,13 @@ def docments_retrieval(entities, norm_docs,k=5):
     for doctitle, sentences in norm_docs.items():
         for sentence in sentences:
             for entity in entities:
-                if sentence['sentence'].count(entity)>0:
-                    print(sentence['sentence'].count(entity))
-                    print(sentence['sentence'])
+                # if sentence['sentence'].count(entity)>0:
+                #     print(sentence['sentence'].count(entity))
+                #     print(sentence['sentence'])
                 doc_score.update({doctitle:sentence['sentence'].count(entity)})
-    return sorted(doc_score.items(), key=lambda kv: kv[1])[:20]
+    return doc_score.most_common(k)
 
-def sentRetrive(lemmatized_query,topDocTitile):
+def sentRetrive(lemmatized_query,topDocTitile, vocab, num_sentence):
     unique_token = 0
     query_vocab = {}
     for word in lemmatized_query:
@@ -143,7 +149,7 @@ def sentRetrive(lemmatized_query,topDocTitile):
     print(query_vocab)
     #sentences retrieval
     sent_index = SentInvertedIndex(topDocTitile, norm_docs, query_vocab)
-    return sentence_tfidf(lemmatized_query, sent_index)
+    return sentence_tfidf(num_sentence, vocab, lemmatized_query, sent_index)
 
 def entityRetrieval(query):
     predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
@@ -176,7 +182,7 @@ if __name__ == '__main__':
 
     # data propressing
     proprocess=process()
-    norm_docs=proprocess.dataProcessing()
+    norm_docs, vocab, num_sentence = proprocess.dataProcessing()
 
     # docments retrieval
     topDocTitile = docments_retrieval(entity, norm_docs)
@@ -185,7 +191,7 @@ if __name__ == '__main__':
     # sentences retrieval
     # queryToken = nltk.word_tokenize(query)
     # lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
-    evidence = sentRetrive(wordList,topDocTitile)
+    evidence = sentRetrive(wordList,topDocTitile, vocab, num_sentence)
     time2 = time.time()-time1
     print(evidence)
     print(time2)
