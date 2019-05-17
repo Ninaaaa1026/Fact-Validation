@@ -154,7 +154,6 @@ def sentRetrive(lemmatized_query,topDocTitile, vocab, num_sentence):
     return sentence_tfidf(num_sentence, vocab, lemmatized_query, sent_index)
 
 def entityRetrieval(query):
-    predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     results = predicts.predict_json({"sentence": query})
     entity = []
     wordList=[]
@@ -189,6 +188,7 @@ if __name__ == '__main__':
     time2 = time.time()-time1
     print(time2)
 
+    predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     for title, content in d.items():
         query = content['claim']
         # entity retrieval
