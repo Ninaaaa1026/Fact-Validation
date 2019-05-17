@@ -130,12 +130,12 @@ def sentence_tfidf(num_sentence, vocab, query, index, k=5):
 def docments_retrieval(entities, norm_docs,k=5):
     doc_score=Counter()
     for doctitle, sentences in norm_docs.items():
-        for sentence in sentences:
+        for senNum,sen in sentences.items():
             for entity in entities:
                 # if sentence['sentence'].count(entity)>0:
                 #     print(sentence['sentence'].count(entity))
                 #     print(sentence['sentence'])
-                doc_score.update({doctitle:sentence['sentence'].count(entity)})
+                doc_score.update({doctitle:sen.count(entity)})
     return doc_score.most_common(k)
 
 def sentRetrive(lemmatized_query,topDocTitile, vocab, num_sentence):

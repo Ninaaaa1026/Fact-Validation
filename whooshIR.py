@@ -39,12 +39,12 @@ class process():
                         if word.isalpha() or word.isnumeric():
                             lem_word = self.lemmatize(word.lower())
                             norm_sen+= lem_word +" "
-                    writer.add_document(title=u""+title, path=u""+ title+" "+senNum,content=u""+norm_sen)
+                    writer.add_document(title=u""+title, path=u""+senNum,content=u""+norm_sen)
         writer.commit()
         print()
 
 
-schema = Schema(title=TEXT(stored=True), path=ID(stored=True), content=TEXT)
+schema = Schema(title=TEXT(stored=True), path=ID(stored=True), content=TEXT(stored=True))
 if not os.path.exists("indexer"):
     os.mkdir("indexer")
     ix= create_in("indexer",schema)
