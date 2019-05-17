@@ -22,7 +22,7 @@ class process():
         # Save to the current directory
         files = os.listdir('./wiki/')
         vocab = Counter()
-        norm_docs = {}
+        norm_docs = defaultdict(lambda:defaultdict())
         num_sentence = 0
         for f in files:
             with open('./wiki/'+ f, 'r', encoding='utf-8') as f:
@@ -38,11 +38,8 @@ class process():
                             lem_word = self.lemmatize(word.lower())
                             norm_sen+= lem_word +" "
                             vocab[lem_word] += 1
-
-                    if title not in norm_docs.keys():
-                        norm_docs[title]=[{'senNum':senNum,'sentence':norm_sen}]
-                    else:
-                        norm_docs[title].append({'senNum':senNum,'sentence':norm_sen})
+                    # if title not in norm_docs.keys():
+                    norm_docs[title][senNum]=norm_sen
         return norm_docs, vocab, num_sentence
 
 # given a query and an index returns a list of the k highest scoring documents as tuples containing <docid,score>
@@ -73,9 +70,9 @@ class SentInvertedIndex:
         self.max_sent_len = 0
         for title,score in doc_titles:
             content = doc_term_freqs[title]
-            for sentence in content:
-                raw_sentence = sentence["sentence"].split(" ")
-                sentid = sentence['senNum']
+            for senNum,sentence in content.items():
+                raw_sentence = sentence.split(" ")
+                sentid = senNum
                 sentFrequency = Counter(raw_sentence)
                 sent_len = sum(sentFrequency.values())
                 self.sent_len[(title, sentid)] = sent_len
