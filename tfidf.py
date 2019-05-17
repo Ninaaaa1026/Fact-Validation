@@ -1,3 +1,4 @@
+import json
 from allennlp.predictors.predictor import Predictor
 import nltk
 import os,sys
@@ -124,7 +125,8 @@ def sentence_tfidf(num_sentence, vocab, query, index, k=5):
                 scores[sentid] = 0
             i = sentids.index(sentid)
             scores[sentid] += log(1 + index.freqs(term)[i]) * log(num_sentence / vocab[term])
-    for docid, score in scores.items():
+
+    for sentid, score in scores.items():
         scores[sentid] = score / sqrt(index.sent_len[sentid])
     return scores.most_common(k)
 
@@ -173,25 +175,44 @@ def entityRetrieval(query):
     return entity,wordList
 
 if __name__ == '__main__':
-    query = "Henderson contributed a track with Big Boss"
-
-    # entity retrieval
-    entity,wordList=entityRetrieval(query)
-    print(entity)
     time1=time.time()
+    with open('./mytest.json', 'r', encoding='utf-8') as f:
+        d = json.load(f)
+        f.close()
 
     # data propressing
     proprocess=process()
     norm_docs, vocab, num_sentence = proprocess.dataProcessing()
 
-    # docments retrieval
-    topDocTitile = docments_retrieval(entity, norm_docs)
-    print(topDocTitile)
+    fullResult = {}
 
-    # sentences retrieval
-    queryToken = nltk.word_tokenize(query)
-    lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
-    evidence = sentRetrive(lemmatized_query,topDocTitile, vocab, num_sentence)
     time2 = time.time()-time1
-    print(evidence)
     print(time2)
+
+    for title, content in d.items():
+        query = content['claim']
+        # entity retrieval
+        entity,wordList=entityRetrieval(query)
+
+        # docments retrieval
+        topDocTitile = docments_retrieval(entity, norm_docs)
+
+        # sentences retrieval
+        queryToken = nltk.word_tokenize(query)
+        lemmatized_query = [proprocess.lemmatize(word.lower()) for word in queryToken]
+        evidence = sentRetrive(lemmatized_query,topDocTitile, vocab, num_sentence)
+        time2 = time.time()-time1
+
+        evidenceList = []
+        for (docTitle, senNum), score in evidence:
+            evidenceList.append([docTitle, int(senNum)])
+        result = {}
+        result['claim'] = content['claim']
+        result['label'] = 'NOT ENOUGH INFO'
+        result['evidence'] = evidenceList
+
+        fullResult[title] = result
+
+    time3 = time.time()-time1
+    print(fullResult)
+    print(time3)
