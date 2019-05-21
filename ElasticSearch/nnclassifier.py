@@ -1,31 +1,57 @@
 import tensorflow as tf
 import numpy as np
 import os,time
-import json
-from whoosh.index import open_dir
 from allennlp.predictors.predictor import Predictor
-from whoosh.fields import *
-from whoosh.qparser import QueryParser
+import json
+import requests
+from elasticsearch import Elasticsearch
+
+sumTotal=0
+episode=0
+url = "http://localhost:9200/_search"
+
+def searchSentence(url, title, senNum):
+    """Simple Elasticsearch Query"""
+    query = json.dumps({
+        "query": {
+            "bool": {
+                "must": [
+                    {"match": {"page_identifier": title}},
+                    {"match": {"sentence_number":senNum}}
+                ]
+            }
+        }
+    })
+    response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
+    results = json.loads(response.text)
+    return results
+
+# def format_results(results):
+#     """Print results nicely:  doc_id) content
+#     """
+#     data = [doc for doc in results['hits']['hits']]
+#     for doc in data:
+#         print("%s) %s" % (doc['_id'], doc['_source']['content']))
+
 
 class nnClassifier():
     def __init__(self):
         self.labels = ["SUPPORTS", "REFUTES", "NOT ENOUGH INFO"]
-        # self.real_result = []
-        # self.index = 0
         self.sess = tf.InteractiveSession()
         self.build_network()
         self.saver = tf.train.Saver()
 
+
     def build_network(self):
         print("Building observer network...")
 
-        self.xs = tf.placeholder(tf.float32, [None,3])
+        self.xs = tf.placeholder(tf.float32, shape=(None,15))
         self.ys = tf.placeholder(tf.float32, [None, 3])
 
         hidden_layer = tf.layers.dense(
             inputs=self.xs,
-            units=100,
-            activation=tf.nn.sigmoid
+            units=25,
+            activation=tf.nn.relu
         )
 
         self.out_layer = tf.layers.dense(
@@ -34,40 +60,38 @@ class nnClassifier():
             activation=tf.nn.softmax
         )
         self.sess.run(tf.global_variables_initializer())
-        loss = tf.reduce_mean(tf.reduce_sum(self.ys * tf.log(self.out_layer)))
+        self.loss = tf.reduce_mean(-tf.reduce_sum(self.ys * tf.log(self.out_layer)))
         # loss = tf.reduce_mean(tf.reduce_sum(self.ys  * tf.log(self.out_layer)),reduction_indices=[1])
-        self.train_step = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
+        self.train_step = tf.train.GradientDescentOptimizer(0.1).minimize(self.loss)
 
     def train(self, batch_xs, batch_ys):
-        self.sess.run(self.train_step, feed_dict={self.xs: batch_xs,self.ys:batch_ys})
+        # input=np.array(batch_xs).transpose()
+        # print(input)
+        [_, loss_val] = self.sess.run([self.train_step, self.loss],feed_dict={self.xs:np.array(batch_xs)[np.newaxis, :],self.ys:np.array(batch_ys)[np.newaxis, :]})
+
+        return loss_val
 
     def classify(self,inputEntailment):
-        index=int(np.argmax(self.sess.run(self.out_layer, feed_dict={self.xs: inputEntailment})))
+        index=int(np.argmax(self.sess.run(self.out_layer, feed_dict={self.xs: np.array(inputEntailment)[np.newaxis, :]})))
         return self.labels[index]
 
     def restoreNet(self):
-        if os.path.exists("NeuralNetwork\my_net"):
-            self.saver.restore(self.sess, "NeuralNetwork\my_net\save_net.ckpt")
+        if os.path.exists("NeuralNetwork"):
+            self.saver.restore(self.sess, "NeuralNetwork/save_net.ckpt")
 
     def storeNet(self):
-        save_path = self.saver.save(self.sess, "NeuralNetwork\my_net\save_net.ckpt")
+        save_path = self.saver.save(self.sess, "NeuralNetwork/save_net.ckpt")
         print("Save to path: ", save_path)
 
 if __name__ == '__main__':
     predictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz")
-    with open('./test.json', 'r', encoding='utf-8') as f:
+    with open('train.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
         f.close()
 
-    with open('./norm.json', 'r', encoding='utf-8') as f:
-        norm_docs = json.load(f)
-        f.close()
-
-    # ix = open_dir("indexer")
     labels=["SUPPORTS", "REFUTES", "NOT ENOUGH INFO"]
     nn=nnClassifier()
-      # results = searcher.document()
-    # with ix.searcher() as searcher:
+    nn.restoreNet()
     for key, content in d.items():
         claim = content['claim']
         evidence = content["evidence"]
@@ -76,36 +100,39 @@ if __name__ == '__main__':
         pro=[]
         count=0
         for sentence in evidence:
-            # count+=1
             title=sentence[0]
             senNum=sentence[1]
             print(title,senNum)
-            time1=time.time()
-            premise=norm_docs[title][str(senNum)]
-            # results = searcher.search(query)
-            # for r in results:
-            #     if r["path"]==str(senNum):
-            #         premise=r["content"]
-
-            # myquery =
-            # results = searcher.search(And([Term("path", senNum)], [Term("title",title)]))
-            # print(searcher.document(title=u""+title))
-            # print(searcher.stored_fields(searcher.document_number(title=u"" +title,path=u"" +str(senNum) )))
-            # premise += searcher.documents(title=u"" + title, path=u"" + str(senNum))["content"]
-            print(time.time()-time1)
-            print(premise)
+            # time1=time.time()
+            for doc in searchSentence(url, title, str(senNum))['hits']['hits']:
+                premise =doc['_source'][ 'sentence_text']
+            # print(time.time()-time1)
+            # print(premise)
             predict=predictor.predict(hypothesis=claim,premise=premise)
-            pro.append(predict['label_probs'])
-        #     if count>7:
-        #         break
-        # while count<7:
+            pro.extend(predict['label_probs'])
+            count+=1
+            if count>=5:
+                break
+        while count<5:
+            # pro.extend(predictor.predict(hypothesis=claim,premise="")['label_probs'])
+            pro.extend([0,0,1])
+            count+=1
+        # if count==0:
         #     pro.append(predictor.predict(hypothesis=claim,premise="")['label_probs'])
-        print(pro)
+        # print(pro)
         ys=[]
         for idx,lab in enumerate(labels):
             if lab==label:
                 ys.append(1)
             else:
                 ys.append(0)
-        nn.train(pro,ys)
+        # print(ys)
+        loss=nn.train(pro,ys)
+        episode+=1
+        sumTotal+=loss
+        if episode%50==0:
+            average=sumTotal/episode
+            nn.storeNet()
+            print(average)
+
     nn.storeNet()

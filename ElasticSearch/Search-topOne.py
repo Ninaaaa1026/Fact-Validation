@@ -196,6 +196,6 @@ if __name__ == '__main__':
         fullResult[key] = fresult
 
     # store result
-    with open('./tfidf2.json', 'w', encoding='utf-8') as f:
+    with open('./tfidf3.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()

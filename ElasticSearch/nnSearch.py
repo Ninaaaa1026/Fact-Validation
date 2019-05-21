@@ -2,7 +2,9 @@ import json
 import requests
 from allennlp.predictors.predictor import Predictor
 import nltk,time
-
+import tensorflow as tf
+import numpy as np
+import os,time
 url = "http://localhost:9200/_search"
 
 lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
@@ -14,21 +16,6 @@ def lemmatize(word):
         if lemma == word:
             lemma = lemmatizer.lemmatize(word, 'a')
     return lemma
-
-def docSelection(url, entityQuery):
-    """Simple Elasticsearch Query"""
-    query = json.dumps({
-        "query": {
-            "match": {
-                 "title": entityQuery,
-            }
-        },
-        "size": 100
-    })
-    response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
-    results = json.loads(response.text)
-    # print(results)
-    return results
 
 def senSelection(url,query,entityQuery):
     """Simple Elasticsearch Query"""
@@ -46,12 +33,6 @@ def senSelection(url,query,entityQuery):
                         }
                 }
                 ]
-                # ,
-                # "filter": {
-                #     "bool": {
-                #         "must": titles
-                #     }
-                # }
             }
         },
         "size": 5
@@ -60,22 +41,6 @@ def senSelection(url,query,entityQuery):
     results = json.loads(response.text)
     print(results)
     return results
-
-def predict(query, sentence):
-    prediction = predictor.predict(
-        hypothesis=query,
-        premise=sentence
-    )
-    p_pos = prediction['label_probs'][0]
-    p_neg = prediction['label_probs'][1]
-    p_neu = prediction['label_probs'][2]
-    max_prob = max(p_pos, p_neg, p_neu)
-    if max_prob == p_pos:
-        return 'SUPPORTS'
-    elif max_prob == p_neg:
-        return 'REFUTES'
-    else:
-        return 'NOT ENOUGH INFO'
 
 #not lemmitized
 def entityRetrieval2(query):
@@ -86,25 +51,57 @@ def entityRetrieval2(query):
             entity.append(results['words'][index])
     return entity
 
-def entityRetrieval3(query):
-    results = predicts.predict_json({"sentence": query})
-    entity = []
-    wordList=[]
-    flag = False
-    for index, tag in enumerate(results['tags']):
-        if len(str(tag)) > 1:
-            wordList.append(results['words'][index].lower())
-            if str(tag).startswith('B-'):
-                phrase = results['words'][index].lower()
-                flag = True
-            elif flag:
-                phrase += " " + results['words'][index].lower()
-                if str(tag).startswith('L-'):
-                    flag = False
-                    entity.append(phrase)
-            else:
-                entity.append(results['words'][index].lower())
-    return entity,wordList
+class nnClassifier():
+    def __init__(self):
+        self.labels = ["SUPPORTS", "REFUTES", "NOT ENOUGH INFO"]
+        self.sess = tf.InteractiveSession()
+        self.build_network()
+        self.saver = tf.train.Saver()
+
+
+    def build_network(self):
+        print("Building observer network...")
+
+        self.xs = tf.placeholder(tf.float32, shape=(None,15))
+        self.ys = tf.placeholder(tf.float32, [None, 3])
+
+        hidden_layer = tf.layers.dense(
+            inputs=self.xs,
+            units=25,
+            activation=tf.nn.relu
+        )
+
+        self.out_layer = tf.layers.dense(
+            inputs=hidden_layer,
+            units=3,
+            activation=tf.nn.softmax
+        )
+        self.sess.run(tf.global_variables_initializer())
+        self.loss = tf.reduce_mean(-tf.reduce_sum(self.ys * tf.log(self.out_layer)))
+        # loss = tf.reduce_mean(tf.reduce_sum(self.ys  * tf.log(self.out_layer)),reduction_indices=[1])
+        self.train_step = tf.train.GradientDescentOptimizer(0.1).minimize(self.loss)
+
+    def train(self, batch_xs, batch_ys):
+        # input=np.array(batch_xs).transpose()
+        # print(input)
+        [_, loss_val] = self.sess.run([self.train_step, self.loss],feed_dict={self.xs:np.array(batch_xs)[np.newaxis, :],self.ys:np.array(batch_ys)[np.newaxis, :]})
+
+        return loss_val
+
+    def classify(self,inputEntailment):
+        print(inputEntailment)
+        output=self.sess.run(self.out_layer, feed_dict={self.xs: np.array(inputEntailment)[np.newaxis, :]})
+        print(output)
+        index=int(np.argmax(output))
+        return self.labels[index]
+
+    def restoreNet(self):
+        if os.path.exists("NeuralNetwork"):
+            self.saver.restore(self.sess, "NeuralNetwork/save_net.ckpt")
+
+    def storeNet(self):
+        save_path = self.saver.save(self.sess, "NeuralNetwork/save_net.ckpt")
+        print("Save to path: ", save_path)
 
 if __name__ == '__main__':
     predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
@@ -130,29 +127,22 @@ if __name__ == '__main__':
         # print(claim)
         evidenceList=[]
         sentence=""
-        # docTitle=set()
-        # for docs in docSelection(url, query)['hits']['hits']:
-        #     docTitle.update([docs['_source']["page_identifier"]])
-        # titleList=[]
-        # for title in docTitle:
-        #     titleList.append({"term":{"page_identifier":title}})
+        pro=[]
+        count=0
         for candidate in senSelection(url,claim,query)['hits']['hits']:
-            # if evidenceList == []:
-            #     sentence = candidate['_source']["sentence_text"]
-            pro.extend(predict(normClaim, candidate['_source']["sentence_text"]))
+            count+=1
+            pro.extend(predictor.predict(hypothesis=normClaim,premise=candidate['_source']["sentence_text"])['label_probs'])
             evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
-        nn.classify(pro)
-        # print(evidenceList)
-        # if evidenceList!=[]:
-        #     sentence=evidenceList[0][2]
-        judge = predict(normClaim, sentence)
+        while count<5:
+            pro.extend([0,0,1])
+            count += 1
         fresult = {}
         fresult['claim'] = content['claim']
-        fresult['label'] = judge
+        fresult['label'] = nn.classify(pro)
         fresult['evidence'] = evidenceList
         fullResult[key] = fresult
 
     # store result
-    with open('./tfidf.json', 'w', encoding='utf-8') as f:
+    with open('./nnPredict.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()

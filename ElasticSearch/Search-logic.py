@@ -167,11 +167,11 @@ if __name__ == '__main__':
         #     judge='NOT ENOUGH INFO'
 
         # #top one
-        for candidate in senSelection(url,claim,query)['hits']['hits']:
-            if evidenceList == []:
-                sentence = candidate['_source']["sentence_text"]
-            evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
-        judge = predict(normClaim, sentence)
+        # for candidate in senSelection(url,claim,query)['hits']['hits']:
+        #     if evidenceList == []:
+        #         sentence = candidate['_source']["sentence_text"]
+        #     evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
+        # judge = predict(normClaim, sentence)
 
         #top probability
         # pro=[]
@@ -185,6 +185,9 @@ if __name__ == '__main__':
         # else:
         #     evidenceList=[]
         #     judge='NOT ENOUGH INFO'
+
+        # logic
+
 
         fresult = {}
         fresult['claim'] = content['claim']

@@ -7,8 +7,8 @@ import numpy as np
 import nltk
 
 # Path configure
-ROOT_PATH = "E:\教材\Semster3\Web Search\Assignment\project\Fact validation"
-RESOURCE_PATH = os.path.join(ROOT_PATH, "Resource")
+# ROOT_PATH = "."
+RESOURCE_PATH = "."
 wiki_pages_text_path = os.path.join(RESOURCE_PATH, "wiki-pages-text")
 train_json_path = os.path.join(RESOURCE_PATH, "train.json")
 url = "http://localhost:9200/_bulk"
@@ -28,18 +28,19 @@ def load_data(temp_list):
     for sentence in temp_list:
         page_identifier = sentence[0]
         sentence_number = sentence[1]
-        sentence_text = sentence[2]
-        fact_id = sentence[3]
+        if sentence_number.isdigit():
+            sentence_text = sentence[2]
+            fact_id = sentence[3]
 
-        create_query = {"create": {"_index": "collections", "_type": "facts", "_id": fact_id}}
-        data_query = {
-            "page_identifier": page_identifier,
-            "sentence_number": sentence_number,
-            "page_title": " ".join([word.lower() for word in page_identifier.replace("_"," ")]),
-            "sentence_text":  sentence_text,
-        }
-        encode_payload = json.dumps(create_query) + "\n" + json.dumps(data_query) + "\n"
-        payload += encode_payload
+            create_query = {"create": {"_index": "collections", "_type": "normTitle", "_id": fact_id}}
+            data_query = {
+                "page_identifier": page_identifier,
+                "sentence_number": int(sentence_number),
+                "title": "".join(page_identifier.replace("_"," ")),
+                "sentence_text":  sentence_text,
+            }
+            encode_payload = json.dumps(create_query) + "\n" + json.dumps(data_query) + "\n"
+            payload += encode_payload
 
     headers = {'Content-Type': "application/json",}
 
