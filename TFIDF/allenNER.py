@@ -19,12 +19,12 @@ class process():
 
     def dataProcessing(self):
         # Save to the current directory
-        files = os.listdir('./wiki/')
+        files = os.listdir('./wiki-pages-text/')
         vocab = Counter()
         norm_docs = {}
         num_sentence = 0
         for f in files:
-            with open('./wiki/'+ f, 'r', encoding='utf-8') as f:
+            with open('./wiki-pages-text/'+ f, 'r', encoding='utf-8') as f:
                 for raw_doc in f:
                     oneLine=raw_doc.split(" ")
                     title=oneLine[0]
