@@ -24,14 +24,24 @@ def senSelection(url,query,entityQuery):
         "query": {
             "bool": {
                 "must": [
-                    { "match": {
+                    {"match": {
                         "sentence_text": query
                     }}
-                    ,
+                    , {"match": {
+                        "title": entityQuery
+                    }}
+                    # ,
+                    # {"match": {
+                    #         "title": entityQuery
+                    #     }
+                    # }
+                ]
+                ,
+                "should": [
                     {"match": {
-                            "title": entityQuery
-                        }
-                }
+                        "title": query
+                    }
+                    }
                 ]
             }
         },

@@ -63,7 +63,7 @@ def senSelection(url,query,entityQuery):
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
-    # print(results)
+    print(results)
     return results
 
 def predict(query, sentence):
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     predictor = Predictor.from_path(
         "https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz")
-    with open('../Resource/devset100.json', 'r', encoding='utf-8') as f:
+    with open('./devset500.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
         f.close()
 
@@ -139,41 +139,32 @@ if __name__ == '__main__':
     time1=time.time()
     for key, content in d.items():
         claim = content['claim']
-        # print(claim)
         normClaim=" ".join([lemmatize(word.lower()) for word in claim.split(" ")])
         query=" ".join(entityRetrieval2(claim))
-        print(query)
-        # print(normClaim)
-        # print(claim)
         evidenceList=[]
         sentence=""
-        # docTitle=set()
-        # for docs in docSelection(url, query)['hits']['hits']:
-        #     docTitle.update([docs['_source']["page_identifier"]])
-        # titleList=[]
-        # for title in docTitle:
-        #     titleList.append({"term":{"page_identifier":title}})4
+        print(query)
 
         # major vote
-        # result = Counter()
-        # for candidate in senSelection(url,claim,query)['hits']['hits']:
-        #     evidenceList.append([candidate['_source']["page_identifier"], candidate['_source']["sentence_number"]])
-        #     sentence = candidate['_source']["sentence_text"]
-        #     result[predict(normClaim, sentence)] += 1
-        # if len(result)>1:
-        #     [(judge, count)] = result.most_common(1)
-        # else:
-        #     evidenceList=[]
-        #     judge='NOT ENOUGH INFO'
-
-        # #top one
+        result = Counter()
         for candidate in senSelection(url,claim,query)['hits']['hits']:
-            if evidenceList == []:
-                sentence = candidate['_source']["sentence_text"]
-            evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
-        judge = predict(normClaim, sentence)
+            evidenceList.append([candidate['_source']["page_identifier"], candidate['_source']["sentence_number"]])
+            sentence = candidate['_source']["sentence_text"]
+            result[predict(normClaim, sentence)] += 1
+        if len(result)>1:
+            [(judge, count)] = result.most_common(1)
+        else:
+            evidenceList=[]
+            judge='NOT ENOUGH INFO'
         if judge=='NOT ENOUGH INFO':
             evidenceList = []
+        # #top one
+        # for candidate in senSelection(url,claim,query)['hits']['hits']:
+        #     if evidenceList == []:
+        #         sentence = candidate['_source']["sentence_text"]
+        #     evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
+        # judge = predict(normClaim, sentence)
+
         #top probability
         # pro=[]
         # for candidate in senSelection(url,claim,query)['hits']['hits']:
@@ -187,16 +178,25 @@ if __name__ == '__main__':
         #     evidenceList=[]
         #     judge='NOT ENOUGH INFO'
 
+        # logic
+        # judge=""
+        # for candidate in senSelection(url, claim, query)['hits']['hits']:
+        #     if judge=="":
+        #         sentence = candidate['_source']["sentence_text"]
+        #         predicted = predict(normClaim, sentence)
+        #         if predicted!='NOT ENOUGH INFO':
+        #             judge=predicted
+        #     evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
+        # if judge=="":
+        #     judge='NOT ENOUGH INFO'
+
         fresult = {}
         fresult['claim'] = content['claim']
         fresult['label'] = judge
-        # if fresult['label']!='NOT ENOUGH INFO':
         fresult['evidence'] = evidenceList
-        # else:
-        #     fresult['evidence'] =[]
         fullResult[key] = fresult
 
     # store result
-    with open('./topOne.json', 'w', encoding='utf-8') as f:
+    with open('./major.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()

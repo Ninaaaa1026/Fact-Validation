@@ -32,11 +32,11 @@ def load_data(temp_list):
             sentence_text = sentence[2]
             fact_id = sentence[3]
 
-            create_query = {"create": {"_index": "collections", "_type": "facts", "_id": fact_id}}
+            create_query = {"create": {"_index": "norm_collections", "_type": "norm_facts", "_id": fact_id}}
             data_query = {
                 "page_identifier": page_identifier,
                 "sentence_number": int(sentence_number),
-                "title": "".join(page_identifier.replace("_"," ")),
+                "title": "".join(page_identifier.lower().replace("_"," ")),
                 "sentence_text":  sentence_text,
             }
             encode_payload = json.dumps(create_query) + "\n" + json.dumps(data_query) + "\n"

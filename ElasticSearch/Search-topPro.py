@@ -4,7 +4,7 @@ from allennlp.predictors.predictor import Predictor
 import nltk,time
 from collections import Counter
 
-url = "http://localhost:9200/_search"
+url = "http://localhost:9200/collections/_search"
 
 lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
 
@@ -63,7 +63,7 @@ def senSelection(url,query,entityQuery):
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
-    # print(results)
+    print(results)
     return results
 
 def predict(query, sentence):
@@ -186,6 +186,9 @@ if __name__ == '__main__':
             evidenceList=[]
             judge='NOT ENOUGH INFO'
 
+        if judge=='NOT ENOUGH INFO':
+            evidenceList = []
+
         fresult = {}
         fresult['claim'] = content['claim']
         fresult['label'] = judge
@@ -196,6 +199,6 @@ if __name__ == '__main__':
         fullResult[key] = fresult
 
     # store result
-    with open('./tfidf2.json', 'w', encoding='utf-8') as f:
+    with open('./topPro.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()
