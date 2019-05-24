@@ -39,6 +39,7 @@ def senSelection(url, normclaim,entities):
     for entity in entities:
         entityQuery.append({"match_phrase": {
             "title": entity}})
+    print(entityQuery)
 #         entityQuery.append({"match_phrase": {
 #             "sentence_text": entity}})
 #     entityQuery.append({"match": {
@@ -66,7 +67,7 @@ def senSelection(url, normclaim,entities):
                 "should": entityQuery
             }
         },
-        "size": 5
+        "size": 1
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
@@ -142,7 +143,7 @@ if __name__ == '__main__':
 
     inforPredictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/biaffine-dependency-parser-ptb-2018.08.23.tar.gz")
 
-    with open('./test-unlabelled.json', 'r', encoding='utf-8') as f:
+    with open('../Resource/test.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
         f.close()
 
@@ -235,7 +236,7 @@ if __name__ == '__main__':
         fresult['evidence'] = evidenceList
         fullResult[key] = fresult
 
-    # store result
-    with open('./testoutput.json', 'w', encoding='utf-8') as f:
-        json.dump(fullResult, f)
-        f.close()
+    # # store result
+    # with open('./testoutput.json', 'w', encoding='utf-8') as f:
+    #     json.dump(fullResult, f)
+    #     f.close()

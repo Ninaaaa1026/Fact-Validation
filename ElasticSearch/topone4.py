@@ -31,36 +31,42 @@ def docSelection(url, entityQuery):
     # print(results)
     return results
 
-def senSelection(url,normclaim,root,entities):
-    """Simple Elasticsearch Query"""
-    # print(titles)
+def senSelection(url, normclaim,entities):
+#     """Simple Elasticsearch Query"""
+#     # print(titles)
+#     senquery=[]
     entityQuery = []
-    mustMatch=[{"match": {
-            "sentence_text": normclaim
-        }}]
     for entity in entities:
         entityQuery.append({"match_phrase": {
             "title": entity}})
-        mustMatch.append(
-        {"match_phrase": {
-            "sentence_text": entity
-        }})
-    if root!="be":
-        mustMatch.append(
-        {
-            "match_phrase": {
-                "sentence_text": root
-            }
-        })
+#         entityQuery.append({"match_phrase": {
+#             "sentence_text": entity}})
+#     entityQuery.append({"match": {
+#                             "sentence_text": root
+#                         }})
+#     query = json.dumps({
+#         "query": {
+#             "bool": {
+#                 # "must": senquery
+#                 #  ,
+#                 "should": entityQuery
+#             }
+#         },
+#         "size": 5
+#     })
     query = json.dumps({
         "query": {
             "bool": {
-                "must":  mustMatch
+                "must": [
+                    {"match": {
+                        "sentence_text": normclaim
+                    }}
+                ]
                 ,
                 "should": entityQuery
             }
         },
-        "size": 5
+        "size": 2
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
@@ -134,8 +140,7 @@ if __name__ == '__main__':
     predictor = Predictor.from_path(
         "https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz")
 
-    inforPredictor = Predictor.from_path(
-        "https://s3-us-west-2.amazonaws.com/allennlp/models/biaffine-dependency-parser-ptb-2018.08.23.tar.gz")
+    inforPredictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/biaffine-dependency-parser-ptb-2018.08.23.tar.gz")
 
     with open('./devset500.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
@@ -144,29 +149,29 @@ if __name__ == '__main__':
     fullResult = {}
     for key, content in d.items():
         claim = content['claim']
-        normClaim = " ".join([lemmatize(word.lower()) for word in claim.split(" ")])
-        entities = entityRetrieval3(claim)
-        evidenceList = []
-        sentence = ""
+        normClaim=" ".join([lemmatize(word.lower()) for word in claim.split(" ")])
+        entities = entityRetrieval3( claim)
+        evidenceList=[]
+        sentence=""
         infoPredict = inforPredictor.predict_json({"sentence": claim})
         idx = 0
         if 'nsubjpass' in infoPredict['predicted_dependencies']:
             idx = infoPredict['predicted_dependencies'].index('nsubjpass')
         elif 'nsubj' in infoPredict['predicted_dependencies']:
             idx = infoPredict['predicted_dependencies'].index('nsubj')
-        info = " ".join(infoPredict['words'][:idx + 1])
-        root = lemmatize(infoPredict['hierplane_tree']['root']['word'].lower())
-
-        tag = False
-        if info not in entities:
+        np = " ".join(infoPredict['words'][:idx + 1])
+        # root = lemmatize(infoPredict['hierplane_tree']['root']['word'].lower())
+        tag=False
+        if np not in entities:
             for entity in entities:
-                if entity in info:
-                    tag = True
+                if entity in np:
+                    tag=True
                     break
-        else:
-            tag = True
+        else:tag=True
         if not tag:
-            entities.append(info)
+            entities.append(np)
+
+
         # major vote
         # result = Counter()
         # for candidate in senSelection(url,claim,query)['hits']['hits']:
@@ -180,11 +185,21 @@ if __name__ == '__main__':
         #     judge='NOT ENOUGH INFO'
 
         # #top one
-        # for candidate in senSelection(url,claim,query)['hits']['hits']:
-        #     if evidenceList == []:
-        #         sentence = candidate['_source']["sentence_text"]
-        #     evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
-        # judge = predict(normClaim, sentence)
+        judge=''
+        for candidate in senSelection(url,normClaim,entities)['hits']['hits']:
+            sentence = candidate['_source']["sentence_text"]
+            label = predict(normClaim, sentence)
+            if evidenceList == []:
+                judge = label
+            # if judge==label:
+            evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])
+                             #    ,
+                             # predictor.predict(
+                             #     hypothesis=normClaim,
+                             #     premise=candidate['_source']["sentence_text"]
+                             # )['label_probs'],candidate['_source']["sentence_text"]
+                             ])
+
 
         #top probability
         # pro=[]
@@ -200,18 +215,17 @@ if __name__ == '__main__':
         #     judge='NOT ENOUGH INFO'
 
         # logic
-        judge=""
-        for candidate in senSelection(url,normClaim,root ,entities)['hits']['hits']:
-            sentence = candidate['_source']["sentence_text"]
-            label = predict(normClaim, sentence)
-            if judge=="":
-                if label!='NOT ENOUGH INFO':
-                    judge=label
-                    # evidenceList = []
-            if judge==label:
-                evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
-        if judge=="":
-            judge='NOT ENOUGH INFO'
+        # judge=""
+        # for candidate in senSelection(url,normClaim,entityQuery)['hits']['hits']:
+        #     if judge=="":
+        #         sentence = candidate['_source']["sentence_text"]
+        #         predicted = predict(normClaim, sentence)
+        #         if predicted!='NOT ENOUGH INFO':
+        #             judge=predicted
+        #             evidenceList = []
+        #     evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
+        # if judge=="":
+        #     judge='NOT ENOUGH INFO'
         # if judge=='NOT ENOUGH INFO':
         #     evidenceList = []
 
@@ -222,6 +236,6 @@ if __name__ == '__main__':
         fullResult[key] = fresult
 
     # store result
-    with open('./logic6.json', 'w', encoding='utf-8') as f:
+    with open('./top4.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()
