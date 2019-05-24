@@ -4,7 +4,7 @@ from allennlp.predictors.predictor import Predictor
 import nltk,time
 from collections import Counter
 
-url = "http://localhost:9200/collections/_search"
+url = "http://localhost:9200/norm_collections/_search"
 
 lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
 
@@ -31,7 +31,7 @@ def docSelection(url, entityQuery):
     # print(results)
     return results
 
-def senSelection(url,query,entityQuery):
+def senSelection(url,query):
     """Simple Elasticsearch Query"""
     # print(titles)
     query = json.dumps({
@@ -40,9 +40,6 @@ def senSelection(url,query,entityQuery):
                 "must": [
                     { "match": {
                         "sentence_text": query
-                    }}
-                    ,{ "match": {
-                        "title": entityQuery
                     }}
                 ]
                 ,
@@ -58,7 +55,7 @@ def senSelection(url,query,entityQuery):
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
-    # print(results)
+    print(results)
     return results
 
 def predict(query, sentence):
@@ -126,6 +123,8 @@ if __name__ == '__main__':
     predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     predictor = Predictor.from_path(
         "https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz")
+
+
     with open('../Resource/devset100.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
         f.close()
@@ -135,10 +134,10 @@ if __name__ == '__main__':
     for key, content in d.items():
         claim = content['claim']
         normClaim=" ".join([lemmatize(word.lower()) for word in claim.split(" ")])
-        query=" ".join(entityRetrieval2(claim))
+        # query=" ".join(entityRetrieval2(claim))
         evidenceList=[]
         sentence=""
-        print(query)
+        print(claim)
         # major vote
         # result = Counter()
         # for candidate in senSelection(url,claim,query)['hits']['hits']:
@@ -173,14 +172,23 @@ if __name__ == '__main__':
 
         # logic
         judge=""
-        for candidate in senSelection(url, claim, query)['hits']['hits']:
+        count=0
+        for candidate in senSelection(url, claim)['hits']['hits']:
+            sentence = candidate['_source']["sentence_text"]
+            predicted = predict(normClaim, sentence)
             if judge=="":
-                sentence = candidate['_source']["sentence_text"]
-                predicted = predict(normClaim, sentence)
                 if predicted!='NOT ENOUGH INFO':
                     judge=predicted
-                    evidenceList=[]
+                    # evidenceList=[]
+            #     else:
+            #         count += 1
+            # if judge==predicted:
             evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
+            if len(evidenceList)>=5 or count>=5:
+                break
+            if judge=="" and predicted=='NOT ENOUGH INFO':
+                evidenceList.append(
+                    [candidate['_source']["page_identifier"], int(candidate['_source']["sentence_number"])])
         if judge=="":
             judge='NOT ENOUGH INFO'
         # if judge=='NOT ENOUGH INFO':
@@ -193,6 +201,6 @@ if __name__ == '__main__':
         fullResult[key] = fresult
 
     # store result
-    with open('./logic2.json', 'w', encoding='utf-8') as f:
+    with open('./logic4.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()

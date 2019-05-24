@@ -3,7 +3,7 @@ import requests
 from allennlp.predictors.predictor import Predictor
 import nltk,time
 from collections import Counter
-
+import re
 url = "http://localhost:9200/collections/_search"
 
 lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
@@ -31,26 +31,17 @@ def docSelection(url, entityQuery):
     # print(results)
     return results
 
-def senSelection(url,query,entityQuery):
+def senSelection(url,normclaim,claim,entities):
     """Simple Elasticsearch Query"""
     # print(titles)
+
     query = json.dumps({
         "query": {
             "bool": {
-                "must": [
-                    { "match": {
-                        "sentence_text": query
+                "should": entities,
+                "must":[{ "match": {
+                        "sentence_text": normclaim
                     }}
-                    ,{ "match": {
-                        "title": entityQuery
-                    }}
-                ]
-                ,
-                "should":[
-                    {"match": {
-                            "title": query
-                        }
-                    }
                 ]
             }
         },
@@ -58,7 +49,7 @@ def senSelection(url,query,entityQuery):
     })
     response = requests.get(url, data=query,headers={'Content-Type': "application/json",})
     results = json.loads(response.text)
-    # print(results)
+    print(results)
     return results
 
 def predict(query, sentence):
@@ -95,7 +86,7 @@ def predictTop(query, sentence):
 
 #not lemmitized
 def entityRetrieval2(query):
-    results = predicts.predict_json({"sentence": query})
+    results = nerPredicts.predict_json({"sentence": query})
     entity = []
     for index, tag in enumerate(results['tags']):
         if len(str(tag)) > 1:
@@ -103,29 +94,35 @@ def entityRetrieval2(query):
     return entity
 
 def entityRetrieval3(query):
-    results = predicts.predict_json({"sentence": query})
+    results = nerPredicts.predict_json({"sentence": query})
     entity = []
     wordList=[]
     flag = False
     for index, tag in enumerate(results['tags']):
         if len(str(tag)) > 1:
-            wordList.append(results['words'][index].lower())
-            if str(tag).startswith('B-'):
-                phrase = results['words'][index].lower()
-                flag = True
-            elif flag:
-                phrase += " " + results['words'][index].lower()
-                if str(tag).startswith('L-'):
-                    flag = False
-                    entity.append(phrase)
-            else:
-                entity.append(results['words'][index].lower())
-    return entity,wordList
+            # wordList.append(results['words'][index].lower())
+            if str(tag).endswith("PER"):
+                if str(tag).startswith('B-'):
+                    phrase = results['words'][index]
+                    flag = True
+                elif flag:
+                    phrase += " " + results['words'][index]
+                    if str(tag).startswith('L-'):
+                        flag = False
+                        entity.append({ "match_phrase": {
+                        "title":phrase}})
+                else:
+                    entity.append({ "match_phrase": {
+                        "title": results['words'][index]}})
+    return entity
 
 if __name__ == '__main__':
-    predicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
     predictor = Predictor.from_path(
         "https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz")
+    inforPredictor = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/openie-model.2018-08-20.tar.gz")
+
+    nerPredicts = Predictor.from_path("https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.12.18.tar.gz")
+
     with open('../Resource/devset100.json', 'r', encoding='utf-8') as f:
         d = json.load(f)
         f.close()
@@ -135,10 +132,21 @@ if __name__ == '__main__':
     for key, content in d.items():
         claim = content['claim']
         normClaim=" ".join([lemmatize(word.lower()) for word in claim.split(" ")])
-        query=" ".join(entityRetrieval2(claim))
+        entities = entityRetrieval3(claim)
         evidenceList=[]
         sentence=""
-        print(query)
+        print(entities)
+        infopredict = inforPredictor.predict_json({"sentence": claim})
+        # print(predict)
+        info = infopredict['verbs'][0]['description'].split("] [")
+        np = ""
+        for idx, item in enumerate(info):
+            if item.startswith("V"):
+                np = info[idx - 1].split(": ")[1]
+        # print(np)
+        if np not in entities:
+            entities.append({"match_phrase": {
+                "title": np}})
         # major vote
         # result = Counter()
         # for candidate in senSelection(url,claim,query)['hits']['hits']:
@@ -173,13 +181,13 @@ if __name__ == '__main__':
 
         # logic
         judge=""
-        for candidate in senSelection(url, claim, query)['hits']['hits']:
+        for candidate in senSelection(url,normClaim,claim,entities)['hits']['hits']:
             if judge=="":
                 sentence = candidate['_source']["sentence_text"]
                 predicted = predict(normClaim, sentence)
                 if predicted!='NOT ENOUGH INFO':
                     judge=predicted
-                    evidenceList=[]
+                    # evidenceList = []
             evidenceList.append([candidate['_source']["page_identifier"],int(candidate['_source']["sentence_number"])])
         if judge=="":
             judge='NOT ENOUGH INFO'
@@ -193,6 +201,6 @@ if __name__ == '__main__':
         fullResult[key] = fresult
 
     # store result
-    with open('./logic2.json', 'w', encoding='utf-8') as f:
+    with open('./logic6.json', 'w', encoding='utf-8') as f:
         json.dump(fullResult, f)
         f.close()
